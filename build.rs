@@ -1,4 +1,4 @@
-use bootloader::DiskImageBuilder;
+use disk_builder::DiskImageBuilder;
 use std::{env, path::PathBuf};
 
 fn main() {

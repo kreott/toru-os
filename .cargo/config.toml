@@ -1,2 +1,9 @@
 [unstable]
 bindeps = true
+panic-abort-tests = true
+
+[target.x86_64-unknown-none]
+runner = "cargo run --package toru_os --bin qemu-test --"
+
+[alias]
+ktest = "test -p kernel --target x86_64-unknown-none"

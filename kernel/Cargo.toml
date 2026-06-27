@@ -1,12 +1,34 @@
+cargo-features = ["per-package-target"]
+
 [package]
 name = "kernel"
 version = "0.1.0"
-edition = "2021"
-
-[[bin]]
-name = "kernel"
-test = false
-bench = false
+edition = "2024"
+default-target = "x86_64-unknown-none"
 
 [dependencies]
 bootloader_api = "0.11.0"
+embedded-graphics = "0.8.1"
+lazy_static ={ version = "1.0", features = ["spin_no_std"] }
+spin = "0.5.2"
+uart_16550 = "0.6.0"
+x86_64 = "0.14.2"
+volatile = "0.2.6"
+
+[[bin]]
+name = "kernel"
+path = "src/main.rs"
+test = true
+bench = false
+
+[[test]]
+name = "should_panic"
+harness = false
+
+[[test]]
+name = "stack_overflow"
+harness = false
+
+[lib]
+path = "src/lib.rs"
+doctest = false
