@@ -1,4 +1,3 @@
-# disk-builder/Cargo.toml
 [package]
 name = "disk-builder"
 version = "0.1.0"

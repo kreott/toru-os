@@ -1,19 +1,19 @@
-cargo-features = ["per-package-target"]
-
 [package]
 name = "kernel"
 version = "0.1.0"
 edition = "2024"
-default-target = "x86_64-unknown-none"
 
 [dependencies]
 bootloader_api = "0.11.0"
 embedded-graphics = "0.8.1"
-lazy_static ={ version = "1.0", features = ["spin_no_std"] }
+lazy_static = { version = "1.0", features = ["spin_no_std"] }
 spin = "0.5.2"
 uart_16550 = "0.6.0"
 x86_64 = "0.14.2"
 volatile = "0.2.6"
+pic8259 = "0.10.1"
+pc-keyboard = "0.7.0"
+linked_list_allocator = "0.9.0"
 
 [[bin]]
 name = "kernel"

@@ -8,9 +8,8 @@ default-run = "toru_os"
 members = ["kernel", "disk-builder"]
 
 [dependencies]
-ovmf-prebuilt = "0.1.0-alpha"
 disk-builder = { path = "disk-builder" }
+ovmf-prebuilt = "0.1.0-alpha"
 
 [build-dependencies]
-kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
 disk-builder = { path = "disk-builder" }

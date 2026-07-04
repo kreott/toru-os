@@ -7,19 +7,37 @@
 
 use core::panic::PanicInfo;
 
-use bootloader_api::BootInfo;
+extern crate alloc;
+
+use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping};
 use embedded_graphics::{
     geometry::Point, pixelcolor::{Rgb888, RgbColor, WebColors},
 };
+use x86_64::VirtAddr;
 
+use kernel::allocator;
+use kernel::memory;
+use kernel::framebuffer;
+use kernel::memory::BootInfoFrameAllocator;
 use kernel::macros::*;
 
-bootloader_api::entry_point!(kernel_main);
+bootloader_api::entry_point!(kernel_main, config = &kernel::BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
-    use kernel::framebuffer;
-
+    
     kernel::main_inits();
+
+    // initialize memory and heap
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator = unsafe { 
+        BootInfoFrameAllocator::init(&boot_info.memory_regions) 
+    };
+
+    allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
+
+    let x = alloc::boxed::Box::new(41);
 
     #[cfg(test)]
     test_main();
@@ -30,10 +48,10 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
         painter.clear(Rgb888::BLACK);
         painter.circle(Point::new(100, 50), 300, Rgb888::CSS_LIGHT_PINK);
-        painter.text("Hiiiii :3", Point::new(200, 200), Rgb888::BLACK);
+        painter.text("Hej", Point::new(200, 200), Rgb888::BLACK);
     }
 
-    loop {}
+    kernel::hlt_loop();
 }
 
 /// This function is called on panic.
@@ -41,7 +59,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     serial_println!("{}", info);
-    loop {}
+    kernel::hlt_loop();
 }
 
 #[cfg(test)]

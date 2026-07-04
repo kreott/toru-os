@@ -7,12 +7,25 @@
 
 use core::panic::PanicInfo;
 
+use bootloader_api::BootloaderConfig;
+use bootloader_api::config::Mapping;
+
+extern crate alloc;
+
 pub mod framebuffer;
 pub mod serial;
 pub mod interrupts;
 pub mod gdt;
+pub mod memory;
+pub mod allocator;
 pub mod tty;
 pub mod macros;
+
+pub static BOOTLOADER_CONFIG: BootloaderConfig = {
+    let mut config = BootloaderConfig::new_default();
+    config.mappings.physical_memory = Some(Mapping::Dynamic);
+    config
+};
 
 
 pub fn main_inits() {
@@ -23,7 +36,13 @@ pub fn main_inits() {
 
     serial_println!("initializing Interrupt Descriptor Table...");
     interrupts::init_idt();
-    
+
+    serial_println!("initializing PICs...");
+    unsafe { 
+        interrupts::PICS.lock().initialize();
+        // unmask IRQ0 (timer) and IRQ1 (keyboard), for UEFI
+        interrupts::PICS.lock().write_masks(0xFC, 0xFF);
+    };
 
     serial_println!("enabling interrupts...");
     x86_64::instructions::interrupts::enable();
@@ -85,7 +104,7 @@ pub fn hlt_loop() -> ! {
 }
 
 #[cfg(test)]
-bootloader_api::entry_point!(test_kernel_main);
+bootloader_api::entry_point!(test_kernel_main, config = &BOOTLOADER_CONFIG);
 
 #[cfg(test)]
 use bootloader_api::BootInfo;
