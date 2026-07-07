@@ -4,11 +4,11 @@
 #![test_runner(kernel::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-
 use core::panic::PanicInfo;
 
 extern crate alloc;
 
+use alloc::vec::Vec;
 use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping};
 use embedded_graphics::{
     geometry::Point, pixelcolor::{Rgb888, RgbColor, WebColors},
@@ -38,6 +38,13 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         .expect("heap initialization failed");
 
     let x = alloc::boxed::Box::new(41);
+    serial_println!("heap_value as {:?}", x);
+
+    let mut vec = Vec::new();
+    for i in 0..500 {
+        vec.push(i);
+    }
+    serial_println!("vec at {:p}", vec.as_slice());
 
     #[cfg(test)]
     test_main();

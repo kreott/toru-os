@@ -27,7 +27,6 @@ pub static BOOTLOADER_CONFIG: BootloaderConfig = {
     config
 };
 
-
 pub fn main_inits() {
     serial_println!("Running initializations...");
 

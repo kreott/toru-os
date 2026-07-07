@@ -11,10 +11,10 @@ use x86_64::{
 /// complete physical memory is mapped to virtual memory at the passed
 /// 'physical_memory_offset'. Also, this function must be only called once
 /// to avoid aliasing '&mut' references (which is undefined behavior).
-pub unsafe fn init(physical_memory_offet: VirtAddr) -> OffsetPageTable<'static> {
+pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     unsafe {
-        let level_4_table = active_level_4_table(physical_memory_offet);
-        OffsetPageTable::new(level_4_table, physical_memory_offet)
+        let level_4_table = active_level_4_table(physical_memory_offset);
+        OffsetPageTable::new(level_4_table, physical_memory_offset)
     }
 }
 
