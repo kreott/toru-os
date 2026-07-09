@@ -5,9 +5,4 @@ panic-abort-tests = true
 runner = "cargo run -p toru_os --bin qemu-test --"
 
 [alias]
-build-kernel = "build -p kernel --target x86_64-unknown-none -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem"
-run-uefi = "run --bin qemu-uefi"
-run-bios = "run --bin qemu-bios"
-
-[build]
-jobs = 8
+ktest = "test --target x86_64-unknown-none -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem -p kernel"

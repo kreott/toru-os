@@ -109,6 +109,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "conquer-once"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96eb12fb69466716fbae9009d389e6a30830ae8975e170eff2d2cff579f9efa3"
+dependencies = [
+ "conquer-util",
+]
+
+[[package]]
+name = "conquer-util"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "654fb2472cc369d311c547103a1fa81d467bef370ae7a0680f65939895b1182a"
+
+[[package]]
 name = "crc"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,6 +137,21 @@ name = "crc-catalog"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803d13fb3b09d88be9f4dbc29062c66b19bf7170867ceb746d2a8689bf6c7a26"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
 name = "disk-builder"
@@ -264,7 +294,10 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "bootloader_api",
+ "conquer-once",
+ "crossbeam-queue",
  "embedded-graphics",
+ "futures-util",
  "lazy_static",
  "linked_list_allocator",
  "pc-keyboard",

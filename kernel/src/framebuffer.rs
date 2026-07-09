@@ -1,11 +1,11 @@
-use core::convert::Infallible;
+use alloc::vec;
+use alloc::vec::Vec;
 
+use lazy_static::lazy_static;
+use spin::Mutex;
 use bootloader_api::info::{FrameBuffer, FrameBufferInfo, PixelFormat};
 use embedded_graphics::{
-    Drawable,
-    draw_target::DrawTarget, 
-    geometry::{self, Point}, 
-    mono_font::{MonoTextStyle, ascii::FONT_10X20}, pixelcolor::{Rgb888, RgbColor}, prelude::Pixel, primitives::{Circle, PrimitiveStyle, StyledDrawable}, text::Text,
+    Drawable, draw_target::DrawTarget, geometry::{self, Point}, mono_font, pixelcolor::{Rgb888, RgbColor}, prelude::Pixel, text::Text,
 };
 
 pub struct Display {
@@ -21,6 +21,10 @@ impl Display {
         }
     }
 
+    pub fn dimensions(&self) -> (usize, usize) {
+        (self.info.width, self.info.height)
+    }
+
     fn draw_pixel(&mut self, coordinates: Point, color: Rgb888) {
         // ignore any pixels that are out of bounds
         let position = match (coordinates.x.try_into(), coordinates.y.try_into()) {
@@ -33,6 +37,42 @@ impl Display {
             blue: color.b(),
         };
         set_pixel_in(self.framebuffer, self.info, position, color);
+    }
+
+    fn fill_region(region: &mut [u8], pixel: u32) {
+        // cast framebuffer to u32 slice and fill
+        let (prefix, aligned, suffix) = unsafe { region.align_to_mut::<u32>() };
+        aligned.fill(pixel);
+        // handle unaligned edges
+        for byte in prefix.iter_mut().chain(suffix.iter_mut()) {
+            *byte = 0;
+        }
+    }
+
+    pub fn clear(&mut self, color: Color) {
+        // pack color into a u32 pixel value
+        let pixel = match self.info.pixel_format {
+            PixelFormat::Bgr => u32::from_le_bytes([color.blue, color.green, color.red, 0]),
+            PixelFormat::Rgb => u32::from_le_bytes([color.red, color.green, color.blue, 0]),
+            _ => 0,
+        };
+        Display::fill_region(self.framebuffer, pixel);
+    }
+
+    pub fn scroll_up(&mut self, rows: usize, bg: Color) {
+        let row_bytes = self.info.stride * self.info.bytes_per_pixel * rows;
+
+        // shift everything up by 'rows' pixels
+        self.framebuffer.copy_within(row_bytes.., 0);
+
+        // clear the bottom 'rows' pixels
+        let bottom_start = self.framebuffer.len() - row_bytes;
+        let pixel = match self.info.pixel_format {
+            PixelFormat::Bgr => u32::from_le_bytes([bg.blue, bg.green, bg.red, 0]),
+            PixelFormat::Rgb => u32::from_le_bytes([bg.red, bg.green, bg.blue, 0]),
+            _ => 0,
+        };
+        Display::fill_region(&mut self.framebuffer[bottom_start..], pixel);
     }
 
     pub fn split_at_line(self, line_index: usize) -> (Self, Self) {
@@ -139,34 +179,175 @@ pub fn set_pixel_in(
     }
 }
 
-// public painter interface
-pub struct Painter<'a> {
-    target: &'a mut Display,
+// interface for TTY terminals //
+
+// public mutexes for sharing across different terminals
+lazy_static! {
+    pub static ref DISPLAY: Mutex<Option<Display>> = Mutex::new(None);
+    pub static ref CONSOLE: Mutex<Option<TextConsole>> = Mutex::new(None);
 }
 
-impl<'a> Painter<'a> {
-    pub fn new(target: &'a mut Display) -> Self {
-        Self { target }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextCell {
+    pub character: char,
+    pub fg: Rgb888,
+    pub bg: Rgb888,
+}
 
-    pub fn clear(&mut self, color: Rgb888) {
-        self.target.clear(color).unwrap_or_else(infallible);
-    }
-
-    pub fn circle(&mut self, pos: Point, diameter: u32, color: Rgb888) {
-        Circle::new(pos, diameter)
-            .draw_styled(&PrimitiveStyle::with_fill(color), self.target)
-            .unwrap_or_else(infallible)
-    }
-
-    pub fn text(&mut self, s: &str, pos: Point, color: Rgb888) {
-        let style = MonoTextStyle::new(&FONT_10X20, color);
-        Text::new(s, pos, style)
-            .draw(self.target)
-            .unwrap_or_else(infallible);
+impl TextCell {
+    pub fn empty(bg: Rgb888) -> Self {
+        Self {
+            character: ' ',
+            fg: Rgb888::WHITE,
+            bg,
+        }
     }
 }
 
-fn infallible<T>(v: Infallible) -> T {
-    match v {}
+pub struct TextConsole {
+    col: usize,
+    row: usize,
+    cols: usize,
+    rows: usize,
+    fg: Rgb888,
+    bg: Rgb888,
+    buffer: Vec<TextCell>,
+    dirty: Vec<bool>,
+}
+
+impl TextConsole {
+    pub fn new(width: usize, height: usize, fg: Rgb888, bg: Rgb888) -> Self {
+        // TODO: add support for changing fonts
+        let cols = width / 10;
+        let rows = height / 20;
+
+        let buffer = vec![TextCell::empty(bg); cols * rows];
+        let dirty = vec![false; buffer.len()];
+
+        Self { col: 0, row: 0, cols, rows, fg, bg, buffer, dirty }
+    }
+
+    pub fn write_char(&mut self, c: char) {
+        match c {
+            '\n' => self.newline(),
+            '\r' => self.col = 0,
+            _ => {
+                // end of line, wrap to new line
+                if self.col >= self.cols {
+                    self.newline();
+                }
+
+                let index = self.row * self.cols + self.col;
+                self.buffer[index] = TextCell {
+                    character: c,
+                    fg: self.fg,
+                    bg: self.bg,
+                };
+                self.dirty[index] = true;
+
+                self.col += 1;
+            }
+        }
+    }
+
+    fn newline(&mut self) {
+        self.col = 0;
+        if self.row < self.rows - 1 {
+            self.row += 1;
+        } else {
+            self.scroll();
+        }
+    }
+
+    fn scroll(&mut self) {
+        DISPLAY.lock().as_mut().unwrap().scroll_up(20, Color { red: 0, green: 0, blue: 0 });
+
+        self.dirty.fill(true);
+    }
+
+    pub fn clear(&mut self) {
+        DISPLAY.lock().as_mut().unwrap().clear(Color { red: 0, green: 0, blue: 0 });
+        self.col = 0;
+        self.row = 0;
+
+        self.dirty.fill(true);
+    }
+
+    pub fn flush(&mut self) {
+        if let Some(ref mut display) = *DISPLAY.lock() {
+            for row in 0..self.rows {
+                for col in 0..self.cols {
+                    let index = row * self.cols + col;
+                    if !self.dirty[index] { continue; }
+
+                    let cell = self.buffer[index];
+                    let x = (col * 10) as i32;
+                    let y = (row * 20) as i32;
+
+                    let style = mono_font::MonoTextStyleBuilder::new()
+                        .font(&mono_font::ascii::FONT_10X20)
+                        .text_color(cell.fg)
+                        .background_color(cell.bg)
+                        .build();
+
+                    let mut buf = [0; 4];
+                    let text_str = cell.character.encode_utf8(&mut buf);
+                    let _ = Text::new(text_str, Point::new(x, y + 15), style).draw(display);
+
+                    self.dirty[index] = false;
+                }
+            }
+        }
+    }
+}
+
+impl core::fmt::Write for TextConsole {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for c in s.chars() {
+            self.write_char(c);
+        }
+        Ok(())
+    }
+}
+
+// print macros //
+
+#[doc(hidden)]
+pub fn _print(args: ::core::fmt::Arguments) {
+    use core::fmt::Write;
+    if let Some(ref mut console) = *CONSOLE.lock() {
+        console.write_fmt(args).unwrap();
+        console.flush();
+    }
+}
+
+#[doc(hidden)]
+pub fn _clear() {
+    if let Some(ref mut console) = *CONSOLE.lock() {
+        console.clear();
+        console.flush();
+    }
+}
+
+/// Prints to the screen through the tty interface.
+#[macro_export]
+macro_rules! tty_print {
+    ($($arg:tt)*) => {
+        $crate::framebuffer::_print(format_args!($($arg)*))
+    };
+}
+
+/// Prints to the screen through the tty interface, with a newline.
+#[macro_export]
+macro_rules! tty_println {
+    () => ($crate::tty_print!("\n"));
+    ($fmt:expr) => ($crate::tty_print!(concat!($fmt, "\n")));
+    ($fmt:expr, $($arg:tt)*) => ($crate::tty_print!(
+        concat!($fmt, "\n"), $($arg)*));
+}
+
+/// Clears the framebuffer (and therefore the screen).
+#[macro_export]
+macro_rules! tty_clear {
+    () => ($crate::framebuffer::_clear());
 }

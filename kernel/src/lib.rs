@@ -18,7 +18,7 @@ pub mod interrupts;
 pub mod gdt;
 pub mod memory;
 pub mod allocator;
-pub mod tty;
+pub mod task;
 pub mod macros;
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -46,10 +46,11 @@ pub fn main_inits() {
     serial_println!("enabling interrupts...");
     x86_64::instructions::interrupts::enable();
 
-    serial_println!("Initializations complete!");
+    serial_println!("kernel::main_inits complete!");
 }
 
-// TESTING STUFF
+// testing stuff //
+
 pub trait Testable {
     fn run(&self) -> ();
 }

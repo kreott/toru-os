@@ -4,18 +4,15 @@
 #![test_runner(kernel::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use core::panic::PanicInfo;
-
 extern crate alloc;
 
-use alloc::vec::Vec;
-use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping};
-use embedded_graphics::{
-    geometry::Point, pixelcolor::{Rgb888, RgbColor, WebColors},
-};
+use core::panic::PanicInfo;
+
+use bootloader_api::BootInfo;
+use embedded_graphics::pixelcolor::{Rgb888, RgbColor};
 use x86_64::VirtAddr;
 
-use kernel::allocator;
+use kernel::{allocator, framebuffer::TextConsole, task::{Task, executor::Executor, keyboard, tty}};
 use kernel::memory;
 use kernel::framebuffer;
 use kernel::memory::BootInfoFrameAllocator;
@@ -23,11 +20,13 @@ use kernel::macros::*;
 
 bootloader_api::entry_point!(kernel_main, config = &kernel::BOOTLOADER_CONFIG);
 
+#[allow(unreachable_code)] // allow unreachable code to avoid warnings after 'executor.run()' as it never returns
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     
     kernel::main_inits();
 
     // initialize memory and heap
+    serial_println!("initializing memory and heap...");
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { 
@@ -37,28 +36,36 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("heap initialization failed");
 
-    let x = alloc::boxed::Box::new(41);
-    serial_println!("heap_value as {:?}", x);
-
-    let mut vec = Vec::new();
-    for i in 0..500 {
-        vec.push(i);
+    // initialize global display for drawing
+    if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
+        let display = framebuffer::Display::new(framebuffer);
+        let (width, height) = display.dimensions();
+        *framebuffer::DISPLAY.lock() = Some(display);
+        *framebuffer::CONSOLE.lock() = Some(TextConsole::new(width, height, Rgb888::WHITE, Rgb888::BLACK));
     }
-    serial_println!("vec at {:p}", vec.as_slice());
+
+    serial_println!("Initializations successful!");
+
+    // initialize async executor
+    let mut executor = Executor::new();
+    executor.spawn(Task::new(example_task()));
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+    executor.spawn(Task::new(tty::tty_task()));
+    executor.run();
 
     #[cfg(test)]
     test_main();
 
-    if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
-        let mut display = framebuffer::Display::new(framebuffer);
-        let mut painter = framebuffer::Painter::new(&mut display);
-
-        painter.clear(Rgb888::BLACK);
-        painter.circle(Point::new(100, 50), 300, Rgb888::CSS_LIGHT_PINK);
-        painter.text("Hej", Point::new(200, 200), Rgb888::BLACK);
-    }
-
     kernel::hlt_loop();
+}
+
+async fn async_number() -> u32 {
+    42
+}
+
+async fn example_task() {
+    let number = async_number().await;
+    serial_println!("async number: {}", number);
 }
 
 /// This function is called on panic.
